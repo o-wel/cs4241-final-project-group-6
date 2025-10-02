@@ -4,13 +4,14 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "nodemon server.js",
+    "dev": "nodemon --env-file=.env server.js",
     "start": "NODE_ENV=production node server.js",
     "build": "vite build"
   },
   "dependencies": {
     "@sveltejs/adapter-node": "^5.3.2",
     "express": "^5.1.0",
+    "mongodb": "^6.20.0",
     "svelte": "^5.39.6",
     "vite-express": "*"
   },
