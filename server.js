@@ -91,8 +91,6 @@ async function connectExample() {
 
 connectExample();
 
-app.get('/hello', (req, res) => res.send('Hi from backend!'));
-
 app.delete('/logout', (req, res) => {
     req.logOut(function (err) {
         if (err) {
