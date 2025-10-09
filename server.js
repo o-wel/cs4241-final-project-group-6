@@ -185,6 +185,22 @@ app.post('/guess', (req, res) => {
   res.json({feedback})
 })
 
+app.post('/valid', (req, res) => {
+  const {word} = req.body
+
+  if(!word || word.length !== 8) {
+    return res.status(400).json({error: 'Word must be 8 letters'})
+  }
+
+  let feedback = false
+
+  if (words.includes(word.trim().toLowerCase())) {
+    feedback = true
+  }
+
+  res.json({feedback})
+})
+
 ViteExpress.listen(app, process.env.PORT || 3000, () =>
   console.log("Server is listening on port 3000..."),
 );

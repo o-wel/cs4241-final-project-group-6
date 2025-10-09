@@ -24,7 +24,7 @@
         setAuth(null, null)
     }
 
-    let characterMap = $state({});
+    let characterMaps = $state(Array.from({ length: 8 }, () => ({})));
     let guesses = $state([]);
     let input = $state('');
     let announcement = $state('');
@@ -37,8 +37,13 @@
     let colorBlindMode = $state('none');
     let showSettingsPanel = $state(false);
 
-    function getLetterColor(letter) {
-        const status = getLetterStatus(letter);
+    function getLetterColor(letter, position) {
+        let status = ''
+        if (position === "ALL") {
+            status = getOverallLetterStatus(letter);
+        } else {
+            status = getLetterStatus(letter, position);
+        }
 
         const colorMap = {
             dark: {
@@ -83,17 +88,53 @@
         return colorMap[theme][status];
     }
 
-    function getLetterStatus(letter) {
-        if (characterMap[letter] === -1) return 'absent';
-        if (characterMap[letter] === 0) return 'present';
-        if (characterMap[letter] === 1) return 'correct';
+    function getLetterStatus(letter, position) {
+        const posMap = characterMaps[position] || {};
+        const value = posMap[letter];
+
+        if (value === -1) return 'absent';
+        if (value === 0) return 'present';
+        if (value === 1) return 'correct';
         return 'unused';
+    }
+
+    function getOverallLetterStatus(letter) {
+    let highest = null;
+    for (const map of characterMaps) {
+        if (map[letter] === 1) return 'correct'; // highest priority
+        if (map[letter] === 0) highest = 'present';
+        if (map[letter] === -1 && !highest) highest = 'absent';
+    }
+    return highest || 'unused';
     }
 
     async function guess() {
         if (input.length !== 8) {
             announcement = `Word must be 8 letters. Current word has ${input.length} letters.`;
             return;
+        }
+
+        try {
+            const res = await fetch('/valid', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({word: input})
+            })
+            if (!res.ok) {
+                const err = await res.json()
+                announcement = err.error || 'Error submitting guess'
+                return;
+            }
+
+            const isValid = await res.json()
+            console.log(isValid.feedback)
+            if (!isValid.feedback) {
+                announcement = 'Current word is not a valid English word.';
+                return;
+            }
+        } catch {
+            console.error(err)
+            announcement = 'Network error while validating guess'
         }
 
         try {
@@ -112,7 +153,9 @@
             const data = await res.json()
             const feedback = data.feedback
 
-            input.split('').forEach((letter, i) => characterMap[letter] = feedback[i])
+            input.split('').forEach((letter, i) => {
+                characterMaps[i][letter] = feedback[i];
+            });
             guesses.push(input)
 
             // Announce the guess result
@@ -397,10 +440,11 @@
                 >
                     {#each Array(8) as _, charIndex}
                         {@const letter = isPastGuess ? guesses[guessIndex][charIndex] : input[charIndex] }
-                        {@const status = isPastGuess ? getLetterStatus(letter) : 'empty' }
+                        {@const status = isPastGuess ? getLetterStatus(letter, charIndex) : 'empty'}
+
 
                         <div
-                            class="aspect-square flex items-center justify-center text-sm sm:text-xl md:text-2xl lg:text-3xl font-bold uppercase rounded relative transition-colors {isPastGuess ? getLetterColor(letter) + ' text-white' : theme === 'high-contrast' ? 'border-4 border-white' : theme === 'light' ? 'border-2 border-gray-300' : 'border-2 border-gray-700'}"
+                            class="aspect-square flex items-center justify-center text-sm sm:text-xl md:text-2xl lg:text-3xl font-bold uppercase rounded relative transition-colors {isPastGuess ? getLetterColor(letter, charIndex) + ' text-white' : theme === 'high-contrast' ? 'border-4 border-white' : theme === 'light' ? 'border-2 border-gray-300' : 'border-2 border-gray-700'}"
                             role="img"
                             aria-label="{isEmpty ? 'Empty cell' : letter + (isPastGuess ? ', ' + status : ', current guess')}"
                         >
@@ -433,15 +477,15 @@
             <div class="flex justify-center {spacingClasses.keyboardRow}">
                 {#each ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'] as letter}
                     <button
-                        class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter)} {fontSizeClass}"
+                        class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter, 'ALL')} {fontSizeClass}"
                         onclick={() => inputLetter(letter)}
-                        aria-label="{letter}, {getLetterStatus(letter)}"
+                        aria-label="{letter}, {getOverallLetterStatus(letter)}"
                         type="button"
                     >
                         {letter}
                         {#if colorBlindMode !== 'none'}
                             <span class="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 text-xs opacity-50" aria-hidden="true">
-                                {getLetterStatus(letter) === 'correct' ? '✓' : getLetterStatus(letter) === 'present' ? '?' : getLetterStatus(letter) === 'absent' ? '✕' : ''}
+                                {getOverallLetterStatus(letter) === 'correct' ? '✓' : getOverallLetterStatus(letter) === 'present' ? '?' : getOverallLetterStatus(letter) === 'absent' ? '✕' : ''}
                             </span>
                         {/if}
                     </button>
@@ -451,15 +495,15 @@
             <div class="flex justify-center {spacingClasses.keyboardRow}">
                 {#each ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'] as letter}
                     <button
-                        class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter)} {fontSizeClass}"
+                        class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter, 'ALL')} {fontSizeClass}"
                         onclick={() => inputLetter(letter)}
-                        aria-label="{letter}, {getLetterStatus(letter)}"
+                        aria-label="{letter}, {getOverallLetterStatus(letter)}"
                         type="button"
                     >
                         {letter}
                         {#if colorBlindMode !== 'none'}
                             <span class="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 text-xs opacity-50" aria-hidden="true">
-                                {getLetterStatus(letter) === 'correct' ? '✓' : getLetterStatus(letter) === 'present' ? '?' : getLetterStatus(letter) === 'absent' ? '✕' : ''}
+                                {getOverallLetterStatus(letter) === 'correct' ? '✓' : getOverallLetterStatus(letter) === 'present' ? '?' : getOverallLetterStatus(letter) === 'absent' ? '✕' : ''}
                             </span>
                         {/if}
                     </button>
@@ -478,15 +522,15 @@
                 </button>
                 {#each ['Z', 'X', 'C', 'V', 'B', 'N', 'M'] as letter}
                     <button
-                        class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter)} {fontSizeClass}"
+                        class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter, 'ALL')} {fontSizeClass}"
                         onclick={() => inputLetter(letter)}
-                        aria-label="{letter}, {getLetterStatus(letter)}"
+                        aria-label="{letter}, {getOverallLetterStatus(letter)}"
                         type="button"
                     >
                         {letter}
                         {#if colorBlindMode !== 'none'}
                             <span class="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 text-xs opacity-50" aria-hidden="true">
-                                {getLetterStatus(letter) === 'correct' ? '✓' : getLetterStatus(letter) === 'present' ? '?' : getLetterStatus(letter) === 'absent' ? '✕' : ''}
+                                {getOverallLetterStatus(letter) === 'correct' ? '✓' : getOverallLetterStatus(letter) === 'present' ? '?' : getOverallLetterStatus(letter) === 'absent' ? '✕' : ''}
                             </span>
                         {/if}
                     </button>
