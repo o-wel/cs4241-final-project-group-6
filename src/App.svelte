@@ -525,9 +525,9 @@
         <!-- Login section -->
         <div class="mt-6">
             {#if authUser}
-                <div>
-                    Signed in as <strong>{authUser.username}</strong>
-                    <button onclick={logout} style="margin-left:8px">Logout</button>
+                <div class="flex flex-col items-center">
+                    <div>Signed in as <strong>{authUser.username}</strong></div>
+                    <button class="bg-gray-100 hover:bg-gray-300 py-2 px-2 rounded" onclick={logout} style="margin-left:8px">Logout</button>
                 </div>
             {:else}
                 <div>

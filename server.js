@@ -5,6 +5,7 @@ import dotenv from 'dotenv'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import User from './models/User.js'
+import UserData from './models/UserData.js'
 import fs from 'fs';
 import seedrandom from 'seedrandom';
 
@@ -30,6 +31,10 @@ if (mongoUri) {
   console.warn('No MongoDB connection string found')
 }
 
+let userGames = 0;
+let userWins = 0;
+let userStreak = 0;
+
 // POST /login - authenticate user and return JWT on success
 app.post('/login', async (req, res) => {
   const { username, password } = req.body || {}
@@ -46,6 +51,12 @@ app.post('/login', async (req, res) => {
 
     const secret = process.env.JWT_SECRET || 'dev_jwt_secret'
     const token = jwt.sign({ id: user._id.toString(), username: user.username }, secret, { expiresIn: '2h' })
+
+    // fetch the user's data
+    const data = await UserData.findOne({ userId: user._id }).exec()
+    userGames = data ? data.playedGames : 0
+    userWins = data ? data.wonGames : 0
+    userStreak = data ? data.currentStreak : 0
 
     return res.json({ success: true, token, user: { username: user.username } })
   } catch (err) {
@@ -74,6 +85,9 @@ app.post('/register', async (req, res) => {
 
     const user = new User({ username, passwordHash })
     await user.save()
+
+    const userData = new UserData( { userId: user._id, playedGames: 0, wonGames: 0, currentStreak: 0 } )
+    await userData.save()
 
     const secret = process.env.JWT_SECRET || 'dev_jwt_secret'
     const token = jwt.sign({ id: user._id.toString(), username: user.username }, secret, { expiresIn: '2h' })
