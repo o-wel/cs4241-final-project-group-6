@@ -1,5 +1,28 @@
 <script>
     import {onMount} from "svelte";
+    import Login from './components/Login.svelte'
+
+    // simple auth state 
+    let token = $state(null)
+    let authUser = $state(null)
+
+    function setAuth(tkn, user) {
+        token = tkn
+        authUser = user
+        if (tkn) localStorage.setItem('jwt', tkn)
+        else localStorage.removeItem('jwt')
+    }
+
+    async function handleLogin(e) {
+        const data = e.detail
+        if (data?.token) {
+            setAuth(data.token, data.user)
+        }
+    }
+
+    function logout() {
+        setAuth(null, null)
+    }
 
     let characterMap = $state({}); // Letters revealed so far by guesses.
     let guesses = $state([]); // Past guesses for this session.
@@ -151,6 +174,12 @@
         announcement = 'Wordle game started. Guess the 8-letter word. You have 5 attempts.';
 
         document.onkeydown = (event) => {
+            // If an input/textarea/contenteditable is focused, do not intercept keys
+            const active = document.activeElement;
+            if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+                return;
+            }
+
             if (event.code === 'Backspace') {
                 event.preventDefault();
                 undoLetter();
@@ -162,6 +191,20 @@
                 inputLetter(event.key.toUpperCase());
             }
         }
+
+                // On mount, check for stored token and validate with /me
+                const stored = localStorage.getItem('jwt')
+                if (stored) {
+                        fetch('/me', { headers: { 'Authorization': `Bearer ${stored}` } })
+                            .then(r => r.json())
+                            .then(d => {
+                                if (d?.success && d.user) {
+                                    setAuth(stored, d.user)
+                                } else {
+                                    setAuth(null, null)
+                                }
+                            }).catch(() => setAuth(null, null))
+                }
     });
 
     // Save preferences when they change
@@ -176,6 +219,20 @@
 <svelte:head>
     <title>Accessible Wordle Clone</title>
 </svelte:head>
+
+<!-- Top auth header -->
+<header style="display:flex;justify-content:flex-end;padding:8px;">
+    {#if authUser}
+                <div>
+                Signed in as <strong>{authUser.username}</strong>
+                <button onclick={logout} style="margin-left:8px">Logout</button>
+            </div>
+        {:else}
+            <div>
+                <Login onlogin={handleLogin} />
+            </div>
+    {/if}
+</header>
 
 <div 
     class="app-container"
@@ -291,7 +348,7 @@
             aria-live="polite"
             aria-atomic="false"
         >
-            {#each { length: 5 }, guessIndex}
+            {#each Array(5) as _, guessIndex}
                 {@const isEmpty = guessIndex > guesses.length }
                 {@const isPastGuess = guessIndex < guesses.length }
                 {@const isCurrentGuess = guessIndex === guesses.length }
@@ -301,7 +358,7 @@
                     role="group"
                     aria-label="Row {guessIndex + 1} of 5"
                 >
-                    {#each { length: 8 }, charIndex}
+                    {#each Array(8) as _, charIndex}
                         {@const letter = isPastGuess ? guesses[guessIndex][charIndex] : input[charIndex] }
                         {@const status = isPastGuess ? getLetterStatus(letter) : 'empty' }
 
