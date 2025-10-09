@@ -336,7 +336,7 @@
         {/if}
     </div>
 
-    <main role="main" aria-label="Wordle game" class="max-w-3xl mx-auto px-1 sm:px-4 py-2 sm:py-8">
+    <main aria-label="Wordle game" class="max-w-3xl mx-auto px-1 sm:px-4 py-2 sm:py-8">
         <!-- Skip link for keyboard users -->
         <a href="#keyboard-section" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:bg-black focus:text-white focus:p-3 focus:rounded focus:z-50 focus:font-bold">
             Skip to keyboard
@@ -531,7 +531,7 @@
                 </div>
             {:else}
                 <div>
-                    <Login onlogin={handleLogin} />
+                    <Login on:login={handleLogin} />
                 </div>
             {/if}
         </div>
