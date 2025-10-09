@@ -127,7 +127,6 @@
             }
 
             const isValid = await res.json()
-            console.log(isValid.feedback)
             if (!isValid.feedback) {
                 announcement = 'Current word is not a valid English word.';
                 return;
