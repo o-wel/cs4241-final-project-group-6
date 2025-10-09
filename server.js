@@ -13,8 +13,7 @@ const app = express();
 app.use(express.json())
 
 // connect to MongoDB
-const mongoUri = process.env.MONGO_URI || process.env.MONGO_URL || process.env.MONGO_CONNECTION_STRING
-if (mongoUri) {
+const mongoUri = `mongodb+srv://${process.env.MONGO_USER}:${process.env.MONGO_PASS}@${process.env.MONGO_HOST}/${process.env.MONGO_DB}?retryWrites=true&w=majority&appName=a3-OwenHart`;if (mongoUri) {
   mongoose.connect(mongoUri, {
   }).then(() => {
     console.log('Connected to MongoDB')
@@ -33,6 +32,7 @@ app.post('/login', async (req, res) => {
 
   try {
     const user = await User.findOne({ username }).exec()
+
     if (!user) return res.status(401).json({ success: false, message: 'Invalid credentials' })
 
     const match = await bcrypt.compare(password, user.passwordHash)
