@@ -6,6 +6,11 @@
     let token = $state(null)
     let authUser = $state(null)
 
+    // userData
+    let playedGames = $state(0)
+    let wonGames = $state(0)
+    let streak = $state(0)
+
     function setAuth(tkn, user) {
         token = tkn
         authUser = user
@@ -18,6 +23,8 @@
         if (data?.token) {
             setAuth(data.token, data.user)
         }
+
+        await fetchUserData()
     }
 
     function logout() {
@@ -228,6 +235,31 @@
         ? 'bg-white text-black'
         : 'bg-black text-white');
 
+    async function fetchUserData() {
+        const stored = localStorage.getItem('jwt');
+        const res = await fetch('/userData', { headers: { 'Authorization': `Bearer ${stored}` } });
+        const userData = await res.json();
+        if (userData) {
+            playedGames = userData.playedGames;
+            wonGames = userData.wonGames;
+            streak = userData.currentStreak;
+        }
+    }
+
+    // call this when the game is done
+    async function gameFinished() {
+        let gameWon = false;
+        const stored = localStorage.getItem('jwt')
+
+        const res = await fetch('/UpdateUserData', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${stored}` },
+            body: JSON.stringify({won: gameWon})
+        })
+
+        await fetchUserData()
+    }
+
     onMount(() => {
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 
@@ -265,19 +297,21 @@
             }
         }
 
-                // On mount, check for stored token and validate with /me
-                const stored = localStorage.getItem('jwt')
-                if (stored) {
-                        fetch('/me', { headers: { 'Authorization': `Bearer ${stored}` } })
-                            .then(r => r.json())
-                            .then(d => {
-                                if (d?.success && d.user) {
-                                    setAuth(stored, d.user)
-                                } else {
-                                    setAuth(null, null)
-                                }
-                            }).catch(() => setAuth(null, null))
-                }
+        // On mount, check for stored token and validate with /me
+        const stored = localStorage.getItem('jwt')
+        if (stored) {
+                fetch('/me', { headers: { 'Authorization': `Bearer ${stored}` } })
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d?.success && d.user) {
+                            setAuth(stored, d.user)
+                        } else {
+                            setAuth(null, null)
+                        }
+                    }).catch(() => setAuth(null, null))
+        }
+
+        fetchUserData()
     });
 
     // save settings to localStorage
@@ -568,9 +602,12 @@
         <!-- Login section -->
         <div class="mt-6">
             {#if authUser}
-                <div>
-                    Signed in as <strong>{authUser.username}</strong>
-                    <button onclick={logout} style="margin-left:8px">Logout</button>
+                <div class="flex flex-col items-center">
+                    <div>Signed in as <strong>{authUser.username}</strong></div>
+                    <p>Played Games: {playedGames}</p>
+                    <p>Won Games: {wonGames}</p>
+                    <p>Current Streak: {streak}</p>
+                    <button class="bg-gray-100 hover:bg-gray-300 py-2 px-2 rounded" onclick={logout} style="margin-left:8px">Logout</button>
                 </div>
             {:else}
                 <div>
