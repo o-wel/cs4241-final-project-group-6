@@ -251,20 +251,6 @@
     <title>Octurdle</title>
 </svelte:head>
 
-<!-- Top auth header -->
-<header style="display:flex;justify-content:flex-end;padding:8px;">
-    {#if authUser}
-                <div>
-                Signed in as <strong>{authUser.username}</strong>
-                <button onclick={logout} style="margin-left:8px">Logout</button>
-            </div>
-        {:else}
-            <div>
-                <Login onlogin={handleLogin} />
-            </div>
-    {/if}
-</header>
-
 <div class="min-h-screen {themeClasses} {fontSizeClass} transition-colors duration-300">
 
     <!-- Accessibility Toolbar -->
@@ -534,6 +520,20 @@
             class="sr-only"
         >
             {announcement}
+        </div>
+
+        <!-- Login section -->
+        <div class="mt-6">
+            {#if authUser}
+                <div>
+                    Signed in as <strong>{authUser.username}</strong>
+                    <button onclick={logout} style="margin-left:8px">Logout</button>
+                </div>
+            {:else}
+                <div>
+                    <Login onlogin={handleLogin} />
+                </div>
+            {/if}
         </div>
     </main>
 </div>

@@ -47,14 +47,16 @@
   onMount(() => usernameInput?.focus())
 </script>
 
-  <form onsubmit={submit} aria-live="polite">
-  <div>
+  <form onsubmit={submit} aria-live="polite" class="bg-gray-100 shadow-md rounded px-8 pt-6 pb-8 mb-4">
+  <div class="mb-4">
     <label for="username">Username</label>
-    <input id="username" bind:this={usernameInput} bind:value={username} autocomplete="username" disabled={loading} />
+    <input id="username" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline"
+           bind:this={usernameInput} bind:value={username} autocomplete="username" disabled={loading} placeholder="Username">
   </div>
-  <div>
+  <div class="mb-4">
     <label for="password">Password</label>
-    <input id="password" type="password" bind:value={password} autocomplete="current-password" disabled={loading} />
+    <input id="password" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" type="password"
+           bind:value={password} autocomplete="current-password" disabled={loading} placeholder="Password">
   </div>
   {#if error}
     <div role="alert" style="color:crimson">{error}</div>
@@ -62,6 +64,8 @@
   {#if success}
     <div role="status" style="color:green">{success}</div>
   {/if}
-  <button type="submit" disabled={loading}>{loading ? 'Signing in...' : 'Sign in'}</button>
+  <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline"
+          disabled={loading}>{loading ? 'Signing in...' : 'Sign in'}</button>
 </form>
+
 
