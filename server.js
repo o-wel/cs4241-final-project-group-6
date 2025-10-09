@@ -5,12 +5,8 @@ import dotenv from 'dotenv'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import User from './models/User.js'
-import session from 'express-session';
-import passport from 'passport';
-import LocalStrategy from 'passport-local';
 import fs from 'fs';
 import seedrandom from 'seedrandom';
-import { MongoClient, ServerApiVersion, ObjectId} from 'mongodb';
 
 dotenv.config()
 
@@ -19,7 +15,10 @@ const app = express();
 app.use(express.json())
 
 // connect to MongoDB
-const mongoUri = `mongodb+srv://${process.env.MONGO_USER}:${process.env.MONGO_PASS}@${process.env.MONGO_HOST}/${process.env.MONGO_DB}?retryWrites=true&w=majority&appName=a3-OwenHart`;
+const builtFromParts = (process.env.MONGO_USER && process.env.MONGO_PASS && process.env.MONGO_HOST && process.env.MONGO_DB)
+  ? `mongodb+srv://${process.env.MONGO_USER}:${process.env.MONGO_PASS}@${process.env.MONGO_HOST}/${process.env.MONGO_DB}?retryWrites=true&w=majority`
+  : ''
+const mongoUri = process.env.MONGO_URI || builtFromParts
 if (mongoUri) {
   mongoose.connect(mongoUri, {
   }).then(() => {
@@ -55,6 +54,37 @@ app.post('/login', async (req, res) => {
   }
 })
 
+// POST /register - create a new user and return JWT on success
+app.post('/register', async (req, res) => {
+  try {
+    const { username, password } = req.body || {}
+    if (!username || !password) return res.status(400).json({ success: false, message: 'username and password required' })
+    if (typeof username !== 'string' || typeof password !== 'string') return res.status(400).json({ success: false, message: 'invalid payload' })
+    if (username.length < 3) return res.status(400).json({ success: false, message: 'username must be at least 3 characters' })
+    if (password.length < 4) return res.status(400).json({ success: false, message: 'password must be at least 4 characters' })
+
+    // ensure that DB is connected
+    if (!mongoUri) return res.status(503).json({ success: false, message: 'Database is not configured' })
+
+    const existing = await User.findOne({ username }).exec()
+    if (existing) return res.status(409).json({ success: false, message: 'username already taken' })
+
+    const salt = await bcrypt.genSalt(10)
+    const passwordHash = await bcrypt.hash(password, salt)
+
+    const user = new User({ username, passwordHash })
+    await user.save()
+
+    const secret = process.env.JWT_SECRET || 'dev_jwt_secret'
+    const token = jwt.sign({ id: user._id.toString(), username: user.username }, secret, { expiresIn: '2h' })
+
+    return res.status(201).json({ success: true, token, user: { username: user.username } })
+  } catch (err) {
+    console.error('Register error', err)
+    return res.status(500).json({ success: false, message: 'Server error' })
+  }
+})
+
 // GET /me - returns current user when provided a Bearer token
 app.get('/me', async (req, res) => {
   const auth = req.headers.authorization
@@ -63,7 +93,7 @@ app.get('/me', async (req, res) => {
   const secret = process.env.JWT_SECRET || 'dev_jwt_secret'
   try {
     const payload = jwt.verify(token, secret)
-    // payload should contain id and username
+    // payload needs an id and username
     const user = await User.findById(payload.id).exec()
     if (!user) return res.status(401).json({ success: false, message: 'Invalid token' })
     return res.json({ success: true, user: { username: user.username } })
@@ -72,76 +102,7 @@ app.get('/me', async (req, res) => {
   }
 })
 
-/* Passport.js as alternative to JWT auth
-
-
-let userData = null;
-
-// setting up passport
-app.use(session({
-    secret: "secret",
-    resave: false,
-    saveUninitialized: true
-}))
-app.use(passport.initialize());
-app.use(passport.session());
-
-const authUser = async (username, password, done) => {
-    await client.connect(err => {
-        console.log(err);
-        client.close();
-    });
-
-    const user = await client.db("final-project-octurdle").collection('users').findOne({username: username, password: password});
-
-    if (!user) {
-        await client.close();
-        return done(null, false, { message: 'Could not find user with this password' });
-    } else {
-        userData = client.db("final-project-octurdle").collection(username);
-        await client.close();
-
-        return done(null, user);
-    }
-}
-
-const checkAuth = (req, res, next) => {
-    if (req.isAuthenticated()) {
-        return next();
-    } else {
-        res.redirect('/loginpage');
-    }
-}
-
-const alreadyLoggedIn = (req, res, next) => {
-    if (req.isAuthenticated()) {
-        return res.redirect('/wishlist');
-    }
-    next()
-}
-
-passport.use(new LocalStrategy(authUser));
-
-passport.serializeUser((user, done) => {
-    console.log("serializing user:", user)
-    done(null, user)
-})
-passport.deserializeUser((user, done) => {
-    console.log("deserializing user:", user)
-    done(null, user)
-})
-
-app.delete('/logout', (req, res) => {
-    req.logOut(function (err) {
-        if (err) {
-            return next(err);
-        }
-        res.redirect('/loginpage');
-    });
-    console.log('logged out');
-})
-
-*/
+// Removed passport.js alternative approach; sticking with JWT-only auth for simplicity because there were issues with session handling
 
 
 // Word Setting
@@ -159,7 +120,6 @@ console.log(`Seed: ${seed}`)
 console.log(`Random word: ${chosenWord}`)
 
 // Guess Handling
-app.use(express.json())
 
 app.post('/guess', (req, res) => {
   const {word} = req.body
