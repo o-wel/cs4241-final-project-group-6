@@ -29,7 +29,7 @@
     let input = $state('');
     let announcement = $state('');
     let gameStatus = $state('playing');
-    
+
     // Settings
     let theme = $state('dark');
     let fontSize = $state('medium');
@@ -69,7 +69,7 @@
                 return 'bg-pink-600';
             }
         }
-        
+
         if (colorBlindMode !== 'none' && status === 'present') {
             if (colorBlindMode === 'protanopia') {
                 return 'bg-orange-500';
@@ -90,20 +90,40 @@
         return 'unused';
     }
 
-    function guess() {
+    async function guess() {
         if (input.length !== 8) {
             announcement = `Word must be 8 letters. Current word has ${input.length} letters.`;
             return;
         }
 
-        // TODO: replace with actual word validation
-        input.split('').forEach(letter => characterMap[letter] = Math.trunc(Math.random() * 5 - 2.5));
-        guesses.push(input);
+        try {
+            const res = await fetch('/guess', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({word: input})
+            })
 
-        const guessNumber = guesses.length;
-        announcement = `Guess ${guessNumber} submitted: ${input}. ${5 - guessNumber} guesses remaining.`;
-        
-        input = '';
+            if (!res.ok) {
+                const err = await res.json()
+                announcement = err.error || 'Error submitting guess'
+                return;
+            }
+
+            const data = await res.json()
+            const feedback = data.feedback
+
+            input.split('').forEach((letter, i) => characterMap[letter] = feedback[i])
+            guesses.push(input)
+
+            // Announce the guess result
+            const guessNumber = guesses.length;
+            announcement = `Guess ${guessNumber} submitted: ${input}. ${5 - guessNumber} guesses remaining.`;
+
+            input = '';
+        } catch (err) {
+            console.error(err)
+            announcement = 'Network error while submitting guess'
+        }
     }
 
     function inputLetter(key) {
@@ -168,7 +188,7 @@
 
     onMount(() => {
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
-        
+
         if (!prefersDark.matches) theme = 'light';
 
         // load saved settings
@@ -176,7 +196,7 @@
         const savedFontSize = localStorage.getItem('wordle-font-size');
         const savedSpacing = localStorage.getItem('wordle-spacing');
         const savedColorBlindMode = localStorage.getItem('wordle-colorblind-mode');
-        
+
         if (savedTheme) theme = savedTheme;
         if (savedFontSize) fontSize = savedFontSize;
         if (savedSpacing) spacing = savedSpacing;
@@ -268,7 +288,7 @@
                 <h2 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4 pb-2 sm:pb-3 border-b-2 {theme === 'light' ? 'border-gray-300' : 'border-gray-700'}">
                     Accessibility Settings
                 </h2>
-                
+
                 <div class="space-y-2 sm:space-y-3">
                     <button
                         onclick={cycleTheme}
@@ -319,7 +339,7 @@
                     </button>
                 </div>
 
-                <button 
+                <button
                     class="w-full mt-3 sm:mt-4 p-2 sm:p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold transition-colors focus:outline focus:outline-2 focus:outline-white focus:outline-offset-2 text-sm sm:text-base"
                     onclick={() => showSettingsPanel = false}
                     aria-label="Close settings panel"
@@ -359,9 +379,9 @@
         </section>
 
         <!-- Game board -->
-        <div 
+        <div
             class="grid grid-rows-5 {spacingClasses.board} mb-1 sm:mb-3 max-w-2xl mx-auto"
-            role="region" 
+            role="region"
             aria-label="Game board"
             aria-live="polite"
             aria-atomic="false"
@@ -370,7 +390,7 @@
                 {@const isEmpty = guessIndex > guesses.length }
                 {@const isPastGuess = guessIndex < guesses.length }
 
-                <div 
+                <div
                     class="grid grid-cols-8 {spacingClasses.row}"
                     role="group"
                     aria-label="Row {guessIndex + 1} of 5"
@@ -379,7 +399,7 @@
                         {@const letter = isPastGuess ? guesses[guessIndex][charIndex] : input[charIndex] }
                         {@const status = isPastGuess ? getLetterStatus(letter) : 'empty' }
 
-                        <div 
+                        <div
                             class="aspect-square flex items-center justify-center text-sm sm:text-xl md:text-2xl lg:text-3xl font-bold uppercase rounded relative transition-colors {isPastGuess ? getLetterColor(letter) + ' text-white' : theme === 'high-contrast' ? 'border-4 border-white' : theme === 'light' ? 'border-2 border-gray-300' : 'border-2 border-gray-700'}"
                             role="img"
                             aria-label="{isEmpty ? 'Empty cell' : letter + (isPastGuess ? ', ' + status : ', current guess')}"
@@ -409,10 +429,10 @@
         <!-- Keyboard section -->
         <section id="keyboard-section" aria-label="On-screen keyboard" class="flex flex-col {spacingClasses.keyboard} max-w-2xl mx-auto">
             <h2 class="sr-only">Keyboard</h2>
-            
+
             <div class="flex justify-center {spacingClasses.keyboardRow}">
                 {#each ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'] as letter}
-                    <button 
+                    <button
                         class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter)} {fontSizeClass}"
                         onclick={() => inputLetter(letter)}
                         aria-label="{letter}, {getLetterStatus(letter)}"
@@ -430,7 +450,7 @@
 
             <div class="flex justify-center {spacingClasses.keyboardRow}">
                 {#each ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'] as letter}
-                    <button 
+                    <button
                         class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter)} {fontSizeClass}"
                         onclick={() => inputLetter(letter)}
                         aria-label="{letter}, {getLetterStatus(letter)}"
@@ -447,7 +467,7 @@
             </div>
 
             <div class="flex justify-center {spacingClasses.keyboardRow}">
-                <button 
+                <button
                     class="flex-shrink-0 py-2 sm:py-3 md:py-5 px-1 sm:px-2 md:px-3 rounded font-bold {theme === 'light' ? 'bg-gray-300 text-black' : theme === 'high-contrast' ? 'bg-white text-black border-2 border-white' : 'bg-gray-600 text-white'} transition-all hover:brightness-90 focus:outline focus:outline-4 focus:outline-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] sm:text-xs md:text-sm"
                     onclick={guess}
                     aria-label="Submit guess"
@@ -457,7 +477,7 @@
                     ENTER
                 </button>
                 {#each ['Z', 'X', 'C', 'V', 'B', 'N', 'M'] as letter}
-                    <button 
+                    <button
                         class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter)} {fontSizeClass}"
                         onclick={() => inputLetter(letter)}
                         aria-label="{letter}, {getLetterStatus(letter)}"
@@ -471,7 +491,7 @@
                         {/if}
                     </button>
                 {/each}
-                <button 
+                <button
                     class="flex-shrink-0 py-2 sm:py-3 md:py-5 px-1 sm:px-2 md:px-3 rounded font-bold {theme === 'light' ? 'bg-gray-300 text-black' : theme === 'high-contrast' ? 'bg-white text-black border-2 border-white' : 'bg-gray-600 text-white'} transition-all hover:brightness-90 focus:outline focus:outline-4 focus:outline-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-base sm:text-xl md:text-2xl"
                     onclick={undoLetter}
                     aria-label="Delete last letter"
@@ -507,9 +527,9 @@
         </section>
 
         <!-- Live region for announcements (screen readers only) -->
-        <div 
-            role="status" 
-            aria-live="polite" 
+        <div
+            role="status"
+            aria-live="polite"
             aria-atomic="true"
             class="sr-only"
         >

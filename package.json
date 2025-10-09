@@ -12,6 +12,11 @@
   "dependencies": {
     "@sveltejs/adapter-node": "^5.3.2",
     "express": "^5.1.0",
+    "express-session": "^1.18.2",
+    "mongodb": "^6.20.0",
+    "passport": "^0.7.0",
+    "passport-local": "^1.0.0",
+    "seedrandom": "^3.0.5",
     "svelte": "^5.39.6",
     "tailwindcss": "^4.1.14",
     "mongoose": "^7.5.0",
@@ -23,7 +28,10 @@
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^6.2.1",
     "@tailwindcss/vite": "^4.1.14",
+    "autoprefixer": "^10.4.21",
     "nodemon": "^3.1.10",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.14",
     "vite": "^6.3.3"
   }
 }

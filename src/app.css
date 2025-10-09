@@ -4,8 +4,8 @@
 /* Color blind badges on letters */
 .cb-badge {
     position: absolute;
-    top: 0.125rem; 
-    right: 0.125rem; 
+    top: 0.125rem;
+    right: 0.125rem;
     font-size: 0.625rem;
     opacity: 0.5;
 }
@@ -32,6 +32,6 @@
 
 /* Keyboard summary details open/hover focus */
 details summary:focus {
-    outline: 2px solid #22c55e; 
+    outline: 2px solid #22c55e;
     border-radius: 0.25rem;
 }
