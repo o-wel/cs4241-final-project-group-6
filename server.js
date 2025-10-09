@@ -3,6 +3,8 @@ import ViteExpress from "vite-express";
 import session from 'express-session';
 import passport from 'passport';
 import LocalStrategy from 'passport-local';
+import fs from 'fs';
+import seedrandom from 'seedrandom';
 import { MongoClient, ServerApiVersion, ObjectId} from 'mongodb';
 
 const uri = `mongodb+srv://${process.env.USR}:${process.env.PASS}@${process.env.HOST}/?retryWrites=true&w=majority&appName=a3-OwenHart`;
@@ -62,6 +64,48 @@ passport.serializeUser((user, done) => {
 passport.deserializeUser((user, done) => {
     console.log("deserializing user:", user)
     done(null, user)
+})
+
+//Word Setting
+const text = fs.readFileSync('wordList.txt', 'utf8')
+const words = text.split(/\s+/).filter(Boolean)
+
+const now = new Date()
+const seed = parseInt(`${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`, 10)
+
+const rand = seedrandom(seed)
+const index = Math.floor(rand() * words.length)
+const chosenWord = words[index].toUpperCase()
+
+console.log(`Seed: ${seed}`)
+console.log(`Random word: ${chosenWord}`)
+
+//Guess Handling
+
+app.use(express.json())
+
+app.post('/guess', (req, res) => {
+  const {word} = req.body
+
+  if(!word || word.length !== 8) {
+    return res.status(400).json({error: 'Word must be 8 letters'})
+  }
+
+  const feedback = word.split('').map((letter, i) => {
+    console.log('Current letter:', letter, 'at index', i)
+    if (letter === chosenWord[i]) {
+      console.log('1')
+      return 1
+    } else if (chosenWord.includes(letter)) {
+      console.log('0')
+      return 0
+    } else {
+      console.log('-1')
+      return -1
+    }
+  })
+
+  res.json({feedback})
 })
 
 const client = new MongoClient(uri, {
