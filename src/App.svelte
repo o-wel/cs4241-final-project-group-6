@@ -1,12 +1,35 @@
 <script>
     import {onMount} from "svelte";
+    import Login from './components/Login.svelte'
+
+    // simple auth state
+    let token = $state(null)
+    let authUser = $state(null)
+
+    function setAuth(tkn, user) {
+        token = tkn
+        authUser = user
+        if (tkn) localStorage.setItem('jwt', tkn)
+        else localStorage.removeItem('jwt')
+    }
+
+    async function handleLogin(e) {
+        const data = e.detail
+        if (data?.token) {
+            setAuth(data.token, data.user)
+        }
+    }
+
+    function logout() {
+        setAuth(null, null)
+    }
 
     let characterMap = $state({});
     let guesses = $state([]);
     let input = $state('');
     let announcement = $state('');
     let gameStatus = $state('playing');
-    
+
     // Settings
     let theme = $state('dark');
     let fontSize = $state('medium');
@@ -16,7 +39,7 @@
 
     function getLetterColor(letter) {
         const status = getLetterStatus(letter);
-        
+
         const colorMap = {
             dark: {
                 absent: 'bg-gray-800',
@@ -46,7 +69,7 @@
                 return 'bg-pink-600';
             }
         }
-        
+
         if (colorBlindMode !== 'none' && status === 'present') {
             if (colorBlindMode === 'protanopia') {
                 return 'bg-orange-500';
@@ -67,20 +90,40 @@
         return 'unused';
     }
 
-    function guess() {
+    async function guess() {
         if (input.length !== 8) {
             announcement = `Word must be 8 letters. Current word has ${input.length} letters.`;
             return;
         }
 
-        // TODO: replace with actual word validation
-        input.split('').forEach(letter => characterMap[letter] = Math.trunc(Math.random() * 5 - 2.5));
-        guesses.push(input);
-        
-        const guessNumber = guesses.length;
-        announcement = `Guess ${guessNumber} submitted: ${input}. ${5 - guessNumber} guesses remaining.`;
-        
-        input = '';
+        try {
+            const res = await fetch('/guess', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({word: input})
+            })
+
+            if (!res.ok) {
+                const err = await res.json()
+                announcement = err.error || 'Error submitting guess'
+                return;
+            }
+
+            const data = await res.json()
+            const feedback = data.feedback
+
+            input.split('').forEach((letter, i) => characterMap[letter] = feedback[i])
+            guesses.push(input)
+
+            // Announce the guess result
+            const guessNumber = guesses.length;
+            announcement = `Guess ${guessNumber} submitted: ${input}. ${5 - guessNumber} guesses remaining.`;
+
+            input = '';
+        } catch (err) {
+            console.error(err)
+            announcement = 'Network error while submitting guess'
+        }
     }
 
     function inputLetter(key) {
@@ -137,15 +180,15 @@
 
     let fontSizeClass = $derived(fontSize === 'small' ? 'text-[10px] sm:text-sm' : fontSize === 'large' ? 'text-xs sm:text-lg' : fontSize === 'x-large' ? 'text-sm sm:text-xl' : 'text-[11px] sm:text-base');
 
-    let themeClasses = $derived(theme === 'dark' 
-        ? 'bg-gray-950 text-white' 
-        : theme === 'light' 
-        ? 'bg-white text-black' 
+    let themeClasses = $derived(theme === 'dark'
+        ? 'bg-gray-950 text-white'
+        : theme === 'light'
+        ? 'bg-white text-black'
         : 'bg-black text-white');
 
     onMount(() => {
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
-        
+
         if (!prefersDark.matches) theme = 'light';
 
         // load saved settings
@@ -153,7 +196,7 @@
         const savedFontSize = localStorage.getItem('wordle-font-size');
         const savedSpacing = localStorage.getItem('wordle-spacing');
         const savedColorBlindMode = localStorage.getItem('wordle-colorblind-mode');
-        
+
         if (savedTheme) theme = savedTheme;
         if (savedFontSize) fontSize = savedFontSize;
         if (savedSpacing) spacing = savedSpacing;
@@ -162,6 +205,12 @@
         announcement = 'Wordle game started. Guess the 8-letter word. You have 5 attempts.';
 
         document.onkeydown = (event) => {
+            // If an input/textarea/contenteditable is focused, do not intercept keys
+            const active = document.activeElement;
+            if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) {
+                return;
+            }
+
             if (event.code === 'Backspace') {
                 event.preventDefault();
                 undoLetter();
@@ -173,6 +222,20 @@
                 inputLetter(event.key.toUpperCase());
             }
         }
+
+                // On mount, check for stored token and validate with /me
+                const stored = localStorage.getItem('jwt')
+                if (stored) {
+                        fetch('/me', { headers: { 'Authorization': `Bearer ${stored}` } })
+                            .then(r => r.json())
+                            .then(d => {
+                                if (d?.success && d.user) {
+                                    setAuth(stored, d.user)
+                                } else {
+                                    setAuth(null, null)
+                                }
+                            }).catch(() => setAuth(null, null))
+                }
     });
 
     // save settings to localStorage
@@ -185,10 +248,25 @@
 </script>
 
 <svelte:head>
-    <title>Accessible Wordle Clone</title>
+    <title>Octurdle</title>
 </svelte:head>
 
+<!-- Top auth header -->
+<header style="display:flex;justify-content:flex-end;padding:8px;">
+    {#if authUser}
+                <div>
+                Signed in as <strong>{authUser.username}</strong>
+                <button onclick={logout} style="margin-left:8px">Logout</button>
+            </div>
+        {:else}
+            <div>
+                <Login onlogin={handleLogin} />
+            </div>
+    {/if}
+</header>
+
 <div class="min-h-screen {themeClasses} {fontSizeClass} transition-colors duration-300">
+
     <!-- Accessibility Toolbar -->
     <div class="fixed top-2 right-2 sm:top-4 sm:right-4 z-50" role="complementary" aria-label="Accessibility settings">
         <button
@@ -210,10 +288,10 @@
                 <h2 class="text-lg sm:text-xl font-bold mb-3 sm:mb-4 pb-2 sm:pb-3 border-b-2 {theme === 'light' ? 'border-gray-300' : 'border-gray-700'}">
                     Accessibility Settings
                 </h2>
-                
+
                 <div class="space-y-2 sm:space-y-3">
-                    <button 
-                        onclick={cycleTheme} 
+                    <button
+                        onclick={cycleTheme}
                         class="w-full flex items-center gap-3 sm:gap-4 p-2 sm:p-3 {theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 border-gray-300' : theme === 'high-contrast' ? 'bg-black border-white border-2' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'} border rounded-lg transition-colors focus:outline focus:outline-2 focus:outline-green-600"
                         aria-label="Change theme, currently {theme}"
                     >
@@ -224,8 +302,8 @@
                         </div>
                     </button>
 
-                    <button 
-                        onclick={cycleFontSize} 
+                    <button
+                        onclick={cycleFontSize}
                         class="w-full flex items-center gap-3 sm:gap-4 p-2 sm:p-3 {theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 border-gray-300' : theme === 'high-contrast' ? 'bg-black border-white border-2' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'} border rounded-lg transition-colors focus:outline focus:outline-2 focus:outline-green-600"
                         aria-label="Change font size, currently {fontSize}"
                     >
@@ -236,8 +314,8 @@
                         </div>
                     </button>
 
-                    <button 
-                        onclick={cycleSpacing} 
+                    <button
+                        onclick={cycleSpacing}
                         class="w-full flex items-center gap-3 sm:gap-4 p-2 sm:p-3 {theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 border-gray-300' : theme === 'high-contrast' ? 'bg-black border-white border-2' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'} border rounded-lg transition-colors focus:outline focus:outline-2 focus:outline-green-600"
                         aria-label="Change spacing, currently {spacing}"
                     >
@@ -248,8 +326,8 @@
                         </div>
                     </button>
 
-                    <button 
-                        onclick={cycleColorBlindMode} 
+                    <button
+                        onclick={cycleColorBlindMode}
                         class="w-full flex items-center gap-3 sm:gap-4 p-2 sm:p-3 {theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 border-gray-300' : theme === 'high-contrast' ? 'bg-black border-white border-2' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'} border rounded-lg transition-colors focus:outline focus:outline-2 focus:outline-green-600"
                         aria-label="Change color blind mode, currently {colorBlindMode}"
                     >
@@ -261,7 +339,7 @@
                     </button>
                 </div>
 
-                <button 
+                <button
                     class="w-full mt-3 sm:mt-4 p-2 sm:p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold transition-colors focus:outline focus:outline-2 focus:outline-white focus:outline-offset-2 text-sm sm:text-base"
                     onclick={() => showSettingsPanel = false}
                     aria-label="Close settings panel"
@@ -278,7 +356,7 @@
             Skip to keyboard
         </a>
 
-        <h1 class="text-xl sm:text-3xl md:text-4xl font-bold text-center mb-2 sm:mb-6">Wordle Clone</h1>
+        <h1 class="text-xl sm:text-3xl md:text-4xl font-bold text-center mb-2 sm:mb-6">Octurdle</h1>
 
         <!-- Instructions -->
         <section aria-labelledby="instructions-heading" class="mb-2 sm:mb-8 text-center">
@@ -301,27 +379,27 @@
         </section>
 
         <!-- Game board -->
-        <div 
-            class="grid grid-rows-5 {spacingClasses.board} mb-1 sm:mb-3 max-w-2xl mx-auto" 
-            role="region" 
+        <div
+            class="grid grid-rows-5 {spacingClasses.board} mb-1 sm:mb-3 max-w-2xl mx-auto"
+            role="region"
             aria-label="Game board"
             aria-live="polite"
             aria-atomic="false"
         >
-            {#each { length: 5 }, guessIndex}
+            {#each Array(5) as _, guessIndex}
                 {@const isEmpty = guessIndex > guesses.length }
                 {@const isPastGuess = guessIndex < guesses.length }
 
-                <div 
-                    class="grid grid-cols-8 {spacingClasses.row}" 
+                <div
+                    class="grid grid-cols-8 {spacingClasses.row}"
                     role="group"
                     aria-label="Row {guessIndex + 1} of 5"
                 >
-                    {#each { length: 8 }, charIndex}
+                    {#each Array(8) as _, charIndex}
                         {@const letter = isPastGuess ? guesses[guessIndex][charIndex] : input[charIndex] }
                         {@const status = isPastGuess ? getLetterStatus(letter) : 'empty' }
 
-                        <div 
+                        <div
                             class="aspect-square flex items-center justify-center text-sm sm:text-xl md:text-2xl lg:text-3xl font-bold uppercase rounded relative transition-colors {isPastGuess ? getLetterColor(letter) + ' text-white' : theme === 'high-contrast' ? 'border-4 border-white' : theme === 'light' ? 'border-2 border-gray-300' : 'border-2 border-gray-700'}"
                             role="img"
                             aria-label="{isEmpty ? 'Empty cell' : letter + (isPastGuess ? ', ' + status : ', current guess')}"
@@ -351,10 +429,10 @@
         <!-- Keyboard section -->
         <section id="keyboard-section" aria-label="On-screen keyboard" class="flex flex-col {spacingClasses.keyboard} max-w-2xl mx-auto">
             <h2 class="sr-only">Keyboard</h2>
-            
+
             <div class="flex justify-center {spacingClasses.keyboardRow}">
                 {#each ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'] as letter}
-                    <button 
+                    <button
                         class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter)} {fontSizeClass}"
                         onclick={() => inputLetter(letter)}
                         aria-label="{letter}, {getLetterStatus(letter)}"
@@ -372,7 +450,7 @@
 
             <div class="flex justify-center {spacingClasses.keyboardRow}">
                 {#each ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'] as letter}
-                    <button 
+                    <button
                         class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter)} {fontSizeClass}"
                         onclick={() => inputLetter(letter)}
                         aria-label="{letter}, {getLetterStatus(letter)}"
@@ -389,7 +467,7 @@
             </div>
 
             <div class="flex justify-center {spacingClasses.keyboardRow}">
-                <button 
+                <button
                     class="flex-shrink-0 py-2 sm:py-3 md:py-5 px-1 sm:px-2 md:px-3 rounded font-bold {theme === 'light' ? 'bg-gray-300 text-black' : theme === 'high-contrast' ? 'bg-white text-black border-2 border-white' : 'bg-gray-600 text-white'} transition-all hover:brightness-90 focus:outline focus:outline-4 focus:outline-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] sm:text-xs md:text-sm"
                     onclick={guess}
                     aria-label="Submit guess"
@@ -399,7 +477,7 @@
                     ENTER
                 </button>
                 {#each ['Z', 'X', 'C', 'V', 'B', 'N', 'M'] as letter}
-                    <button 
+                    <button
                         class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter)} {fontSizeClass}"
                         onclick={() => inputLetter(letter)}
                         aria-label="{letter}, {getLetterStatus(letter)}"
@@ -413,7 +491,7 @@
                         {/if}
                     </button>
                 {/each}
-                <button 
+                <button
                     class="flex-shrink-0 py-2 sm:py-3 md:py-5 px-1 sm:px-2 md:px-3 rounded font-bold {theme === 'light' ? 'bg-gray-300 text-black' : theme === 'high-contrast' ? 'bg-white text-black border-2 border-white' : 'bg-gray-600 text-white'} transition-all hover:brightness-90 focus:outline focus:outline-4 focus:outline-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-base sm:text-xl md:text-2xl"
                     onclick={undoLetter}
                     aria-label="Delete last letter"
@@ -449,9 +527,9 @@
         </section>
 
         <!-- Live region for announcements (screen readers only) -->
-        <div 
-            role="status" 
-            aria-live="polite" 
+        <div
+            role="status"
+            aria-live="polite"
             aria-atomic="true"
             class="sr-only"
         >
