@@ -294,20 +294,6 @@
     <title>Octurdle</title>
 </svelte:head>
 
-<!-- Top auth header -->
-<header style="display:flex;justify-content:flex-end;padding:8px;">
-    {#if authUser}
-                <div>
-                Signed in as <strong>{authUser.username}</strong>
-                <button onclick={logout} style="margin-left:8px">Logout</button>
-            </div>
-        {:else}
-            <div>
-                <Login onlogin={handleLogin} />
-            </div>
-    {/if}
-</header>
-
 <div class="min-h-screen {themeClasses} {fontSizeClass} transition-colors duration-300">
 
     <!-- Accessibility Toolbar -->
@@ -393,7 +379,7 @@
         {/if}
     </div>
 
-    <main role="main" aria-label="Wordle game" class="max-w-3xl mx-auto px-1 sm:px-4 py-2 sm:py-8">
+    <main aria-label="Wordle game" class="max-w-3xl mx-auto px-1 sm:px-4 py-2 sm:py-8">
         <!-- Skip link for keyboard users -->
         <a href="#keyboard-section" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:bg-black focus:text-white focus:p-3 focus:rounded focus:z-50 focus:font-bold">
             Skip to keyboard
@@ -578,6 +564,20 @@
             class="sr-only"
         >
             {announcement}
+        </div>
+
+        <!-- Login section -->
+        <div class="mt-6">
+            {#if authUser}
+                <div>
+                    Signed in as <strong>{authUser.username}</strong>
+                    <button onclick={logout} style="margin-left:8px">Logout</button>
+                </div>
+            {:else}
+                <div>
+                    <Login on:login={handleLogin} />
+                </div>
+            {/if}
         </div>
     </main>
 </div>
