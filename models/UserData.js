@@ -7,6 +7,8 @@ const userDataSchema = new Schema({
     playedGames: { type: Number, required: true },
     wonGames: { type: Number, required: true },
     currentStreak: { type: Number, required: true },
+    lastUpdated: { type: Date, default: Date.now },
+
 }, {collection: 'UserData'})
 
 export default model('UserData', userDataSchema)

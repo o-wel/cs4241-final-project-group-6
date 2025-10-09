@@ -31,10 +31,6 @@ if (mongoUri) {
   console.warn('No MongoDB connection string found')
 }
 
-let userGames = 0;
-let userWins = 0;
-let userStreak = 0;
-
 // POST /login - authenticate user and return JWT on success
 app.post('/login', async (req, res) => {
   const { username, password } = req.body || {}
@@ -51,12 +47,6 @@ app.post('/login', async (req, res) => {
 
     const secret = process.env.JWT_SECRET || 'dev_jwt_secret'
     const token = jwt.sign({ id: user._id.toString(), username: user.username }, secret, { expiresIn: '2h' })
-
-    // fetch the user's data
-    const data = await UserData.findOne({ userId: user._id }).exec()
-    userGames = data ? data.playedGames : 0
-    userWins = data ? data.wonGames : 0
-    userStreak = data ? data.currentStreak : 0
 
     return res.json({ success: true, token, user: { username: user.username } })
   } catch (err) {
@@ -86,7 +76,7 @@ app.post('/register', async (req, res) => {
     const user = new User({ username, passwordHash })
     await user.save()
 
-    const userData = new UserData( { userId: user._id, playedGames: 0, wonGames: 0, currentStreak: 0 } )
+    const userData = new UserData( { userId: user._id, playedGames: 0, wonGames: 0, currentStreak: 0, lastUpdated: Date.now() } )
     await userData.save()
 
     const secret = process.env.JWT_SECRET || 'dev_jwt_secret'
@@ -111,6 +101,87 @@ app.get('/me', async (req, res) => {
     const user = await User.findById(payload.id).exec()
     if (!user) return res.status(401).json({ success: false, message: 'Invalid token' })
     return res.json({ success: true, user: { username: user.username } })
+  } catch (err) {
+    return res.status(401).json({ success: false, message: 'Invalid token' })
+  }
+})
+
+app.get('/userData', async (req, res) => {
+  const auth = req.headers.authorization
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Missing token' })
+  const token = auth.slice(7)
+  const secret = process.env.JWT_SECRET || 'dev_jwt_secret'
+
+  try {
+    const payload = jwt.verify(token, secret)
+    // payload needs an id and username
+    const user = await User.findById(payload.id).exec()
+    if (!user) return res.status(401).json({ success: false, message: 'Invalid token' })
+
+    // fetch the user's data
+    const data = await UserData.findOne({ userId: user._id }).exec()
+    if(data) {
+      return res.json({ playedGames: data.playedGames, wonGames: data.wonGames, currentStreak: data.currentStreak, lastUpdated: data.lastUpdated })
+    }
+  } catch (err) {
+    return res.status(401).json({ success: false, message: 'Invalid token' })
+  }
+})
+
+app.post('/UpdateUserData', async (req, res) => {
+  const auth = req.headers.authorization
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ success: false, message: 'Missing token' })
+  const token = auth.slice(7)
+  const secret = process.env.JWT_SECRET || 'dev_jwt_secret'
+
+  try {
+    const payload = jwt.verify(token, secret)
+    // payload needs an id and username
+    const user = await User.findById(payload.id).exec()
+    if (!user) return res.status(401).json({ success: false, message: 'Invalid token' })
+
+    // fetch the user's data
+    const data = await UserData.findOne({ userId: user._id }).exec()
+    if(data) {
+      const lastUpdated = data.lastUpdated;
+      const current = new Date();
+      const sameDay = lastUpdated.getFullYear() === now.getFullYear() &&
+          lastUpdated.getMonth() === now.getMonth() &&
+          lastUpdated.getDate() === now.getDate();
+
+      if (sameDay) {
+        return res.status(429).json({ success: false, message: 'Already updated today' });
+      }
+
+      // checking if streak has been broken
+      const lastMidnight = new Date(lastUpdated.getFullYear(), lastUpdated.getMonth(), lastUpdated.getDate());
+      const nowMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      const msPerDay = 24 * 60 * 60 * 1000;
+      const diffDays = (nowMidnight - lastMidnight) / msPerDay;
+
+      let streak = data.currentStreak;
+      if(diffDays > 2) {
+        streak = 0;
+      } else {
+        streak += 1
+      }
+
+      let wonGames = data.wonGames;
+      if(req.body.won === true) {
+        wonGames += 1;
+      }
+      await UserData.updateOne({ userId: user._id }, {
+        playedGames: data.playedGames += 1,
+        wonGames: wonGames,
+        currentStreak: streak,
+        lastUpdated: current
+      }).exec();
+
+      return res.json({ success: true, message: 'UserData updated' });
+
+
+    }
   } catch (err) {
     return res.status(401).json({ success: false, message: 'Invalid token' })
   }
