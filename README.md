@@ -40,8 +40,8 @@ We also had a persisent bug where the feedback previous color of the previous gu
 
 - Jack: Frontend game board, guess input system, keyboard interface
 - Olivia: Backend word selection, daily word seeding using seedrandom, guess validation endpoint
-- Owen: User authentication system, JWT implementation, account endpoints
-- Rohit: Login/register component and auth UI
+- Owen: User authentication system, storing user data, account endpoints
+- Rohit: Login/register component, auth UI, JWT implementation
 - Ethan: Accessibility features including theme switching, colorblind modes, keyboard navigation, ARIA labels, and screen reader support
 
 ## Accessibility Features
