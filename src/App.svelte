@@ -484,11 +484,20 @@
             <p class="mb-1 sm:mb-4 opacity-80 text-xs sm:text-base">Guess the 8-letter word in 5 tries</p>
             <div class="flex justify-center gap-1.5 sm:gap-4 flex-wrap text-[10px] sm:text-sm mb-1 sm:mb-4">
                 <div class="flex items-center gap-1 sm:gap-2">
-                    <span class="w-4 h-4 sm:w-6 sm:h-6 flex-shrink-0 {theme === 'high-contrast' ? 'bg-blue-600 border-2 border-white' : 'bg-green-700'} inline-block rounded" aria-hidden="true"></span>
+                    <span class="w-4 h-4 sm:w-6 sm:h-6 flex-shrink-0 {
+                        colorBlindMode === 'protanopia' || colorBlindMode === 'deuteranopia' ? 'bg-blue-600' :
+                        colorBlindMode === 'tritanopia' ? 'bg-pink-600' :
+                        theme === 'high-contrast' ? 'bg-blue-600 border-2 border-white' : 'bg-green-700'
+                    } inline-block rounded" aria-hidden="true"></span>
                     <span>Correct position</span>
                 </div>
                 <div class="flex items-center gap-1 sm:gap-2">
-                    <span class="w-4 h-4 sm:w-6 sm:h-6 flex-shrink-0 {theme === 'high-contrast' ? 'bg-yellow-300 border-2 border-white' : 'bg-yellow-600'} inline-block rounded" aria-hidden="true"></span>
+                    <span class="w-4 h-4 sm:w-6 sm:h-6 flex-shrink-0 {
+                        colorBlindMode === 'protanopia' ? 'bg-orange-500' :
+                        colorBlindMode === 'deuteranopia' ? 'bg-orange-600' :
+                        colorBlindMode === 'tritanopia' ? 'bg-cyan-500' :
+                        theme === 'high-contrast' ? 'bg-yellow-300 border-2 border-white' : 'bg-yellow-600'
+                    } inline-block rounded" aria-hidden="true"></span>
                     <span>Wrong position</span>
                 </div>
                 <div class="flex items-center gap-1 sm:gap-2">
