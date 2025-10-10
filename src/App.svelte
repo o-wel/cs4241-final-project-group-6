@@ -454,11 +454,11 @@
                 <div>
                     Signed in as <strong>{authUser.username}</strong>
                 </div>
-                <button class="bg-gray-100 hover:bg-gray-200 py-1 px-2 rounded" onclick={logout}>Logout</button>
+                <button class="cursor-pointer hover:underline" onclick={logout}>Logout</button>
             </div>
         {:else}
             <div class="flex justify-end px-3">
-                <button class="cursor-pointer" onclick={() => showLoginPanel = true}>Login</button>
+                <button class="cursor-pointer hover:underline" onclick={() => showLoginPanel = true}>Login</button>
             </div>
         {/if}
 
