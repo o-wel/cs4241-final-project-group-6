@@ -20,8 +20,8 @@
         } else { localStorage.removeItem('jwt'); }
     }
 
-    async function handleLogin(e) {
-        const data = e.detail;
+    async function handleLogin(evtOrData) {
+        const data = evtOrData?.detail ?? evtOrData;
         if (data?.token) {
             await setAuth(data.token, data.user);
             showLoginPanel = false;
