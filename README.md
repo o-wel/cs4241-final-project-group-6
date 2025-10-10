@@ -4,7 +4,7 @@
 
 - GitHub Repository: https://github.com/o-wel/cs4241-final-project-group-6
 
-- Deployed Application: Link goes here whenever we get it
+- Deployed Application: https://octurdle.onrender.com
 
 - Project Description
 
