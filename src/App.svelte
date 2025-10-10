@@ -1,41 +1,64 @@
 <script>
-    import {onMount} from "svelte";
-    import Login from './components/Login.svelte'
+    import { onMount } from 'svelte';
+    import { fade } from 'svelte/transition';
+    import Login from './components/Login.svelte';
 
     // simple auth state
-    let token = $state(null)
-    let authUser = $state(null)
+    let authUser = $state(null);
+    let showLoginPanel = $state(false);
 
     // userData
-    let playedGames = $state(0)
-    let wonGames = $state(0)
-    let streak = $state(0)
+    let playedGames = $state(0);
+    let wonGames = $state(0);
+    let streak = $state(0);
 
-    function setAuth(tkn, user) {
-        token = tkn
-        authUser = user
-        if (tkn) localStorage.setItem('jwt', tkn)
-        else localStorage.removeItem('jwt')
+    async function setAuth(tkn, user) {
+        authUser = user;
+        if (tkn) {
+            localStorage.setItem('jwt', tkn);
+            await fetchUserData();
+        } else { localStorage.removeItem('jwt'); }
     }
 
     async function handleLogin(e) {
-        const data = e.detail
+        const data = e.detail;
         if (data?.token) {
-            setAuth(data.token, data.user)
+            await setAuth(data.token, data.user);
+            showLoginPanel = false;
         }
-
-        await fetchUserData()
     }
 
     function logout() {
-        setAuth(null, null)
+        setAuth(null, null);
     }
 
-    let characterMaps = $state(Array.from({ length: 8 }, () => ({})));
+    let characterMaps = $state(Array.from({length: 8}, () => ({})));
     let guesses = $state([]);
     let input = $state('');
     let announcement = $state('');
-    let gameStatus = $state('playing');
+
+    // Track game finished state.
+    let gameOver = $derived(guesses.length === 5 || gameWon);
+    let gameWon = $state(false);
+    $effect(async () => {
+        if (gameOver) {
+            await gameFinished();
+        }
+    })
+
+    let showToast = $state(false);
+    let toast = $state('');
+
+    // Show toasts with a max of 4 seconds.
+    let toastTimeout;
+    $effect(() => {
+        if (toast.length) {
+            clearTimeout(toastTimeout);
+
+            showToast = true;
+            toastTimeout = setTimeout(() => { showToast = false; toast = ''; }, 4000);
+        }
+    });
 
     // Settings
     let theme = $state('dark');
@@ -45,7 +68,7 @@
     let showSettingsPanel = $state(false);
 
     function getLetterColor(letter, position) {
-        let status = ''
+        let status = '';
         if (position === "ALL") {
             status = getOverallLetterStatus(letter);
         } else {
@@ -106,16 +129,17 @@
     }
 
     function getOverallLetterStatus(letter) {
-    let highest = null;
-    for (const map of characterMaps) {
-        if (map[letter] === 1) return 'correct'; // highest priority
-        if (map[letter] === 0) highest = 'present';
-        if (map[letter] === -1 && !highest) highest = 'absent';
-    }
-    return highest || 'unused';
+        let highest = null;
+        for (const map of characterMaps) {
+            if (map[letter] === 1) return 'correct'; // highest priority
+            if (map[letter] === 0) highest = 'present';
+            if (map[letter] === -1 && !highest) highest = 'absent';
+        }
+        return highest || 'unused';
     }
 
     async function guess() {
+        if (gameOver) return;
         if (input.length !== 8) {
             announcement = `Word must be 8 letters. Current word has ${input.length} letters.`;
             return;
@@ -136,10 +160,10 @@
             const isValid = await res.json()
             if (!isValid.feedback) {
                 announcement = 'Current word is not a valid English word.';
+                toast = 'Current word is not a valid English word.';
                 return;
             }
         } catch {
-            console.error(err)
             announcement = 'Network error while validating guess'
         }
 
@@ -162,11 +186,21 @@
             input.split('').forEach((letter, i) => {
                 characterMaps[i][letter] = feedback[i];
             });
-            guesses.push(input)
+            guesses.push(input);
 
             // Announce the guess result
             const guessNumber = guesses.length;
-            announcement = `Guess ${guessNumber} submitted: ${input}. ${5 - guessNumber} guesses remaining.`;
+
+            if (feedback.every(x => x === 1)) {
+                gameWon = true;
+                announcement = `Guess ${guessNumber} was correct: ${input}.`;
+                toast = `You won in ${guessNumber} guesses!`;
+            } else if (guessNumber === 5) {
+                announcement = 'Guess was incorrect, no more guesses remaining.';
+                toast = 'Game over, no more guesses.';
+            } else {
+                announcement = `Guess ${guessNumber} submitted: ${input}. ${5 - guessNumber} guesses remaining.`;
+            }
 
             input = '';
         } catch (err) {
@@ -176,6 +210,7 @@
     }
 
     function inputLetter(key) {
+        if (gameOver) return;
         if (input.length === 8) {
             announcement = 'Word is complete. Press Enter to submit or Backspace to edit.';
             return;
@@ -184,6 +219,7 @@
     }
 
     function undoLetter() {
+        if (gameOver) return;
         if (input.length > 0) {
             const removed = input[input.length - 1];
             input = input.slice(0, input.length - 1);
@@ -232,8 +268,8 @@
     let themeClasses = $derived(theme === 'dark'
         ? 'bg-gray-950 text-white'
         : theme === 'light'
-        ? 'bg-white text-black'
-        : 'bg-black text-white');
+            ? 'bg-white text-black'
+            : 'bg-black text-white');
 
     async function fetchUserData() {
         const stored = localStorage.getItem('jwt');
@@ -248,19 +284,20 @@
 
     // call this when the game is done
     async function gameFinished() {
-        let gameWon = false;
-        const stored = localStorage.getItem('jwt')
+        const stored = localStorage.getItem('jwt');
 
-        const res = await fetch('/UpdateUserData', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${stored}` },
-            body: JSON.stringify({won: gameWon})
-        })
+        if (stored) {
+            await fetch('/UpdateUserData', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${stored}` },
+                body: JSON.stringify({ won: gameWon })
+            })
 
-        await fetchUserData()
+            await fetchUserData();
+        }
     }
 
-    onMount(() => {
+    onMount(async () => {
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
 
         if (!prefersDark.matches) theme = 'light';
@@ -298,20 +335,18 @@
         }
 
         // On mount, check for stored token and validate with /me
-        const stored = localStorage.getItem('jwt')
+        const stored = localStorage.getItem('jwt');
         if (stored) {
-                fetch('/me', { headers: { 'Authorization': `Bearer ${stored}` } })
-                    .then(r => r.json())
-                    .then(d => {
-                        if (d?.success && d.user) {
-                            setAuth(stored, d.user)
-                        } else {
-                            setAuth(null, null)
-                        }
-                    }).catch(() => setAuth(null, null))
+            fetch('/me', {headers: {'Authorization': `Bearer ${stored}`}})
+                .then(r => r.json())
+                .then(d => {
+                    if (d?.success && d.user) {
+                        setAuth(stored, d.user)
+                    } else {
+                        setAuth(null, null)
+                    }
+                }).catch(() => setAuth(null, null))
         }
-
-        fetchUserData()
     });
 
     // save settings to localStorage
@@ -323,22 +358,17 @@
     });
 </script>
 
-<svelte:head>
-    <title>Octurdle</title>
-</svelte:head>
-
-<div class="min-h-screen {themeClasses} {fontSizeClass} transition-colors duration-300">
-
+<div class="{themeClasses} {fontSizeClass} transition-colors duration-300">
     <!-- Accessibility Toolbar -->
     <div class="fixed top-2 right-2 sm:top-4 sm:right-4 z-50" role="complementary" aria-label="Accessibility settings">
         <button
-            class="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 {theme === 'light' ? 'bg-white text-black border-black' : theme === 'high-contrast' ? 'bg-white text-black border-white' : 'bg-black/80 text-white border-white'} flex items-center justify-center hover:scale-110 transition-transform focus:outline focus:outline-4 focus:outline-green-600"
+            class="w-10 h-10 sm:w-12 sm:h-12 rounded-full border-2 {theme === 'light' ? 'bg-white text-black border-black' : theme === 'high-contrast' ? 'bg-white text-black border-white' : 'bg-black/80 text-white border-white'} flex items-center justify-center hover:scale-110 transition-transform focus:outline-4 focus:outline-green-600"
             onclick={() => showSettingsPanel = !showSettingsPanel}
             aria-label="Toggle accessibility settings panel"
             aria-expanded={showSettingsPanel}
             title="Accessibility Settings"
         >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="sm:w-6 sm:h-6">
+            <svg width="20" height="20" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" class="sm:w-6 sm:h-6">
                 <circle cx="12" cy="12" r="3"></circle>
                 <path d="M12 1v6m0 6v6m5.2-15.8l-4.2 4.2m0 5.2l-4.2 4.2m11.2-5.2l-6-6m-6 6l-6 6"></path>
             </svg>
@@ -354,7 +384,7 @@
                 <div class="space-y-2 sm:space-y-3">
                     <button
                         onclick={cycleTheme}
-                        class="w-full flex items-center gap-3 sm:gap-4 p-2 sm:p-3 {theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 border-gray-300' : theme === 'high-contrast' ? 'bg-black border-white border-2' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'} border rounded-lg transition-colors focus:outline focus:outline-2 focus:outline-green-600"
+                        class="w-full flex items-center gap-3 sm:gap-4 p-2 sm:p-3 {theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 border-gray-300' : theme === 'high-contrast' ? 'bg-black border-white border-2' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'} border rounded-lg transition-colors focus:outline-2 focus:outline-green-600"
                         aria-label="Change theme, currently {theme}"
                     >
                         <span class="text-xl sm:text-2xl">🎨</span>
@@ -366,7 +396,7 @@
 
                     <button
                         onclick={cycleFontSize}
-                        class="w-full flex items-center gap-3 sm:gap-4 p-2 sm:p-3 {theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 border-gray-300' : theme === 'high-contrast' ? 'bg-black border-white border-2' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'} border rounded-lg transition-colors focus:outline focus:outline-2 focus:outline-green-600"
+                        class="w-full flex items-center gap-3 sm:gap-4 p-2 sm:p-3 {theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 border-gray-300' : theme === 'high-contrast' ? 'bg-black border-white border-2' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'} border rounded-lg transition-colors focus:outline-2 focus:outline-green-600"
                         aria-label="Change font size, currently {fontSize}"
                     >
                         <span class="text-xl sm:text-2xl">Aa</span>
@@ -378,7 +408,7 @@
 
                     <button
                         onclick={cycleSpacing}
-                        class="w-full flex items-center gap-3 sm:gap-4 p-2 sm:p-3 {theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 border-gray-300' : theme === 'high-contrast' ? 'bg-black border-white border-2' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'} border rounded-lg transition-colors focus:outline focus:outline-2 focus:outline-green-600"
+                        class="w-full flex items-center gap-3 sm:gap-4 p-2 sm:p-3 {theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 border-gray-300' : theme === 'high-contrast' ? 'bg-black border-white border-2' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'} border rounded-lg transition-colors focus:outline-2 focus:outline-green-600"
                         aria-label="Change spacing, currently {spacing}"
                     >
                         <span class="text-xl sm:text-2xl">↔️</span>
@@ -390,7 +420,7 @@
 
                     <button
                         onclick={cycleColorBlindMode}
-                        class="w-full flex items-center gap-3 sm:gap-4 p-2 sm:p-3 {theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 border-gray-300' : theme === 'high-contrast' ? 'bg-black border-white border-2' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'} border rounded-lg transition-colors focus:outline focus:outline-2 focus:outline-green-600"
+                        class="w-full flex items-center gap-3 sm:gap-4 p-2 sm:p-3 {theme === 'light' ? 'bg-gray-100 hover:bg-gray-200 border-gray-300' : theme === 'high-contrast' ? 'bg-black border-white border-2' : 'bg-gray-800 hover:bg-gray-700 border-gray-700'} border rounded-lg transition-colors focus:outline-2 focus:outline-green-600"
                         aria-label="Change color blind mode, currently {colorBlindMode}"
                     >
                         <span class="text-xl sm:text-2xl">👁️</span>
@@ -402,7 +432,7 @@
                 </div>
 
                 <button
-                    class="w-full mt-3 sm:mt-4 p-2 sm:p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold transition-colors focus:outline focus:outline-2 focus:outline-white focus:outline-offset-2 text-sm sm:text-base"
+                    class="w-full mt-3 sm:mt-4 p-2 sm:p-3 bg-green-600 hover:bg-green-700 text-white rounded-lg font-bold transition-colors focus:outline-2 focus:outline-white focus:outline-offset-2 text-sm sm:text-base"
                     onclick={() => showSettingsPanel = false}
                     aria-label="Close settings panel"
                 >
@@ -412,11 +442,39 @@
         {/if}
     </div>
 
-    <main aria-label="Wordle game" class="max-w-3xl mx-auto px-1 sm:px-4 py-2 sm:py-8">
+    <main aria-label="Wordle game" class="max-w-3xl mx-auto min-h-screen px-1 relative sm:px-4 py-2 sm:py-8">
         <!-- Skip link for keyboard users -->
         <a href="#keyboard-section" class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:bg-black focus:text-white focus:p-3 focus:rounded focus:z-50 focus:font-bold">
             Skip to keyboard
         </a>
+
+        <!-- Login section -->
+        {#if authUser}
+            <div class="mt-6">
+                Signed in as <strong>{authUser.username}</strong>
+                <button class="cursor-pointer ms-1" onclick={logout}>Logout</button>
+            </div>
+        {:else}
+            <div class="flex justify-end px-3">
+                <button class="cursor-pointer" onclick={() => showLoginPanel = true}>Login</button>
+            </div>
+        {/if}
+
+        {#if showLoginPanel }
+            <div class="bg-gray-700/70 absolute flex items-center justify-center top-0 left-0 bottom-0 right-0 z-20">
+                <button class="absolute text-white top-0 left-0 ms-6 py-2 sm:py-8 cursor-pointer" onclick={() => showLoginPanel = false}>&#x2715;</button>
+                <Login onlogin={handleLogin} theme={theme} />
+            </div>
+        {/if}
+
+        <!-- Toast messages -->
+        {#if showToast}
+            <div class="absolute top-0 left-0 right-0 bottom-0 flex items-center justify-center pointer-events-none z-10" transition:fade>
+                <div class="{theme === 'high-contrast' ? 'bg-white border-2 text-black border-blue-600' : 'bg-gray-800/90'} max-w-72 text-center font-bold {fontSizeClass} px-6 py-2 shadow-md rounded">
+                    {toast}
+                </div>
+            </div>
+        {/if}
 
         <h1 class="text-xl sm:text-3xl md:text-4xl font-bold text-center mb-2 sm:mb-6">Octurdle</h1>
 
@@ -490,16 +548,17 @@
         </div>
 
         <!-- Keyboard section -->
-        <section id="keyboard-section" aria-label="On-screen keyboard" class="flex flex-col {spacingClasses.keyboard} max-w-2xl mx-auto">
+        <section id="keyboard-section" aria-label="On-screen keyboard" class="flex flex-col {spacingClasses.keyboard} max-w-2xl mx-auto mt-auto">
             <h2 class="sr-only">Keyboard</h2>
 
             <div class="flex justify-center {spacingClasses.keyboardRow}">
                 {#each ['Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P'] as letter}
                     <button
-                        class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter, 'ALL')} {fontSizeClass}"
+                        class="min-w-10 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline-4 focus:outline-green-600 disabled:opacity-50 disabled:cursor-not-allowed {getLetterColor(letter, 'ALL')} {fontSizeClass}"
                         onclick={() => inputLetter(letter)}
                         aria-label="{letter}, {getOverallLetterStatus(letter)}"
                         type="button"
+                        disabled={gameOver}
                     >
                         {letter}
                         {#if colorBlindMode !== 'none'}
@@ -514,10 +573,11 @@
             <div class="flex justify-center {spacingClasses.keyboardRow}">
                 {#each ['A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L'] as letter}
                     <button
-                        class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter, 'ALL')} {fontSizeClass}"
+                        class="min-w-10 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline-4 focus:outline-green-600 disabled:opacity-50 disabled:cursor-not-allowed {getLetterColor(letter, 'ALL')} {fontSizeClass}"
                         onclick={() => inputLetter(letter)}
                         aria-label="{letter}, {getOverallLetterStatus(letter)}"
                         type="button"
+                        disabled={gameOver}
                     >
                         {letter}
                         {#if colorBlindMode !== 'none'}
@@ -531,20 +591,21 @@
 
             <div class="flex justify-center {spacingClasses.keyboardRow}">
                 <button
-                    class="flex-shrink-0 py-2 sm:py-3 md:py-5 px-1 sm:px-2 md:px-3 rounded font-bold {theme === 'light' ? 'bg-gray-300 text-black' : theme === 'high-contrast' ? 'bg-white text-black border-2 border-white' : 'bg-gray-600 text-white'} transition-all hover:brightness-90 focus:outline focus:outline-4 focus:outline-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] sm:text-xs md:text-sm"
+                    class="flex-shrink-0 py-2 sm:py-3 md:py-5 px-1 sm:px-2 md:px-3 rounded font-bold {theme === 'light' ? 'bg-gray-300 text-black' : theme === 'high-contrast' ? 'bg-white text-black border-2 border-white' : 'bg-gray-600 text-white'} transition-all hover:brightness-90 focus:outline-4 focus:outline-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] sm:text-xs md:text-sm"
                     onclick={guess}
                     aria-label="Submit guess"
                     type="button"
-                    disabled={input.length !== 8}
+                    disabled={input.length !== 8 || gameOver}
                 >
                     ENTER
                 </button>
                 {#each ['Z', 'X', 'C', 'V', 'B', 'N', 'M'] as letter}
                     <button
-                        class="flex-1 min-w-0 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline focus:outline-4 focus:outline-green-600 {getLetterColor(letter, 'ALL')} {fontSizeClass}"
+                        class="min-w-10 py-2 sm:py-3 md:py-5 px-0.5 sm:px-1 md:px-2 rounded font-bold text-white relative transition-all hover:brightness-110 hover:scale-105 active:scale-95 focus:outline-4 focus:outline-green-600 disabled:opacity-50 disabled:cursor-not-allowed {getLetterColor(letter, 'ALL')} {fontSizeClass}"
                         onclick={() => inputLetter(letter)}
                         aria-label="{letter}, {getOverallLetterStatus(letter)}"
                         type="button"
+                        disabled={gameOver}
                     >
                         {letter}
                         {#if colorBlindMode !== 'none'}
@@ -555,7 +616,7 @@
                     </button>
                 {/each}
                 <button
-                    class="flex-shrink-0 py-2 sm:py-3 md:py-5 px-1 sm:px-2 md:px-3 rounded font-bold {theme === 'light' ? 'bg-gray-300 text-black' : theme === 'high-contrast' ? 'bg-white text-black border-2 border-white' : 'bg-gray-600 text-white'} transition-all hover:brightness-90 focus:outline focus:outline-4 focus:outline-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-base sm:text-xl md:text-2xl"
+                    class="flex-shrink-0 min-w-10 py-2 sm:py-3 md:py-5 px-1 sm:px-2 md:px-3 rounded font-bold {theme === 'light' ? 'bg-gray-300 text-black' : theme === 'high-contrast' ? 'bg-white text-black border-2 border-white' : 'bg-gray-600 text-white'} transition-all hover:brightness-90 focus:outline-4 focus:outline-green-600 disabled:opacity-50 disabled:cursor-not-allowed text-base sm:text-xl md:text-2xl"
                     onclick={undoLetter}
                     aria-label="Delete last letter"
                     type="button"
@@ -565,10 +626,18 @@
                 </button>
             </div>
 
+            {#if authUser}
+                <div class="flex gap-2 mt-2 justify-center">
+                    <p>Played Games: {playedGames}</p>
+                    <p>Won Games: {wonGames}</p>
+                    <p>Current Streak: {streak}</p>
+                </div>
+            {/if}
+
             <!-- Keyboard shortcuts help -->
-            <div class="text-center mt-3 sm:mt-4 text-xs sm:text-sm opacity-70">
+            <div class="text-center mt-2 sm:mt-4 text-xs sm:text-sm opacity-70">
                 <details>
-                    <summary class="cursor-pointer p-2 inline-block hover:opacity-100 focus:outline focus:outline-2 focus:outline-green-600 focus:rounded">
+                    <summary class="cursor-pointer p-2 inline-block hover:opacity-100 focus:outline-2 focus:outline-green-600 focus:rounded">
                         Keyboard shortcuts
                     </summary>
                     <ul class="list-none p-0 mt-2 sm:mt-3 space-y-1.5 sm:space-y-2">
@@ -597,23 +666,6 @@
             class="sr-only"
         >
             {announcement}
-        </div>
-
-        <!-- Login section -->
-        <div class="mt-6">
-            {#if authUser}
-                <div class="flex flex-col items-center">
-                    <div>Signed in as <strong>{authUser.username}</strong></div>
-                    <p>Played Games: {playedGames}</p>
-                    <p>Won Games: {wonGames}</p>
-                    <p>Current Streak: {streak}</p>
-                    <button class="bg-gray-100 hover:bg-gray-300 py-2 px-2 rounded" onclick={logout} style="margin-left:8px">Logout</button>
-                </div>
-            {:else}
-                <div>
-                    <Login on:login={handleLogin} />
-                </div>
-            {/if}
         </div>
     </main>
 </div>
